@@ -1,0 +1,188 @@
+---
+title: "Crise financière de 2007-2008 sur les actifs financiers"
+author: "Martin ADECHI"
+date: '`r Sys.Date()`'
+output: pdf_document
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Nous étudions à présent l’impact de la crise commencée mi-2007 sur un indice
+boursier et sur des titres de volatilités variées, de janvier 2006 à mars 2009.
+Nous allons étudier les actions Danone et Oréal et l'indice boursier CAC40
+# Exploration de la série
+Les séries ont des echelles différentes. Sur un même graphique se situera la série des actions et sur la seconde la série des indices bousiers. Nous utilisons le package Caschrono pour avoir ce qu'on désire
+```{r}
+library(caschrono)
+```
+```{r}
+data(csdl)
+```
+Nous allons voir une breve description des données
+```{r}
+summary(csdl)
+```
+
+```{r}
+max.csdl=apply(csdl,2,which.max)
+datelor=index(csdl)[max.csdl["L_Oreal"]]
+datemax=index(csdl)[max.csdl["Cac40"]]
+zz <-csdl
+plot(zz[,"Cac40"],type="l",xlab="année",ylab="indice Cac 40")
+plot(zz[,2:4],type="l",ann=FALSE,yaxt="n",lty=2,col=rainbow(3),plot.type="single")
+abline(v=c(datemax,datelor))
+axis(side=4)
+mtext(side=4,"indices Société générale, Danone, L'Oréal",line=2.5)
+legend(x="topright",bty="n",lty=c(1,2,2,2),col=c("black",rainbow(3)),legend=paste(colnames(zz),
+c("(échelle de gauche)",rep("(´echelle de droite)",3))))
+```
+## Etude des rendements
+Le package timeSeries nous aide a calculer les rendements et la librairie moments nous aide a calculer les moments comme le Kurtosis et le skewness
+```{r}
+library(moments)
+library(timeSeries)
+library(its)
+library(fGarch)
+```
+```{r}
+r.csdl = returns(csdl, method = 'compound',percentage = FALSE)
+summary(r.csdl)
+```
+La présence des manquants nous inquiète un peu. Nous allons retourner les index où se trouve ces manquants
+```{r}
+indexes = which(! complete.cases(r.csdl))
+indexes
+```
+La série des rendements est la série qui nous interesse. Elle présente des manquants. Nous allons supprimer ces manquants et ensuite convertir en une série irrégulière notre série
+
+```{r}
+r.csdl = na.omit(r.csdl)
+print(class(r.csdl))
+summary(r.csdl)
+```
+Nous voyons que les manquants ont été éliminés mais que le type de l'objet devient un `array` au lieu d'être `ts`.Nous allons donc le convertir en serie temporelle irrégulière
+```{r}
+r.csdl = its(r.csdl)
+class(r.csdl)
+```
+
+Nous calculons les rendements avant (c’est-à-dire avant juillet 2007) et pendant la crise (c’est-à-dire après juillet 2007 pour la Société Générale et Danone, et
+après décembre 2007 pour L’Oréal), ainsi que les aplatissements et coefficients
+d’asymétrie des séries correspondantes.
+La fonction de calcul du kurtosis utilisé calcul le kurtosis non centré
+Nous allons commencer par nous interesser au subset sur juiellet 2007
+
+```{r}
+rendav.06=rangeIts(r.csdl,end= "2007-06-01")
+rendapr.06=rangeIts(r.csdl,start="2007-06-02")
+sk.av06=round(apply(rendav.06,2,skewness,na.rm=TRUE),2)
+kurt.av06=round(apply(rendav.06,2,kurtosis,na.rm=TRUE),2)
+sk.apr06=round(apply(rendapr.06,2,skewness,na.rm=TRUE),2)
+kurt.apr06=round(apply(rendapr.06,2,kurtosis,na.rm=TRUE),2)
+sk06=rbind(sk.av06,sk.apr06,kurt.av06,kurt.apr06)[,2:3]
+colnames(sk06)=c("Socgen","Danone")
+rownames(sk06)=c("asym.av","asym.apr","aplat.av","aplat.apr")
+print(sk06)
+```
+L'assymétrie pour les deux séries positifs avant la crise deviennent négatifs après. On voit que la crise a provoqué plus de rendements négatifs que positifs
+
+## Etude de l'indice CAC40
+Nous allons commencer par étudier l'hétéroscédasticité conditionnelle de cette serie. Nous allons utiliser le test du multiplicateur de Lagrange 
+```{r}
+library(FinTS)
+```
+```{r}
+at_cac = ArchTest(csdl[,'Cac40'])
+at_cac$p.value
+```
+la p-value est quasiment nulle. On rejette H0 et on accepte H1: Il y a hétéroscédasticité conditionnelle
+
+Nous allons modéliser la série après la crise c'est a dire que nous allons nous interesser aux observations a partir de 2007-05-31. Nous allons utiliser comme trajectoire d'apprentissage la série du rendement moins les 50 dernières valeurs. Nous prédirons la moyenne de la série (si elle se révèle non nulle) et l’écart type conditionnel pour ces 50 dernières dates. Isolons les trajectoires d’apprentissage, `rcac_train`, et de test,`rcac_test`
+```{r}
+rcac = rangeIts(r.csdl[,'Cac40'], start = datemax) 
+rcac_train = rcac@.Data[1:(length(rcac)-51)]
+rcac_test = rcac@.Data[(length(rcac)-50):length(rcac)]
+```
+### Modélisation du rendement
+Examinons l’ACF et la PACF de la série d’apprentissage :
+```{r}
+plot(rcac_train,type = 'l')
+xy.acfb(rcac_train, numer = FALSE)
+```
+Nous remarquons que le rendement n’est pas un bruit blanc; le PACF le prouve. Nous commençons donc par en chercher un modèle. L’ACF suggère un MA(4). Nous allons commencer par explorer cette possibilité
+
+```{r}
+modele1 = arima(rcac_train,order=c(0,0,4),include.mean = FALSE)
+print(modele1)
+```
+```{r}
+res1 = residuals(modele1)
+ret=c(6,12,18,24)
+t(Box.test.2(res1,ret,type="Box-Pierce",fitdf=3,decim=4))
+```
+Le test de Box Pierce donne des résultats intéressantes. Nous allons vérifier l'hétéroscédasticité du modèle maintenant.
+
+```{r}
+ArchTest(res1, lag=20)
+```
+La pvalue confirme l'hétéroscédasticité conditionnelle des résidus. Nous allons passer au modele Garch
+```{r}
+modele2 = garchFit(~garch(1,1), data = rcac_train, include.mean = FALSE,trace = FALSE)
+summary(modele2)
+```
+Les tests de blancheurs montre que le modele est pertinent de même que les tests d'homoscédasticité conditionnelle.
+Calculons la variance marginale pour voir elle est positive ou pas
+```{r}
+var.marg.est<-function(mod){
+   param.estim=mod@fit$par
+   std.estim=mod@fit$se.coef
+   k<-which(names(param.estim)=="omega")
+   value=param.estim[k]/(1-sum(param.estim[(k+1):length(param.estim)]))
+   cat("variance marginale : ",value,"\n")
+}
+
+var.marg.est(modele2)
+sd(rcac_train)
+```
+Le modele rend bien compte de la variance.
+## Modélisation simultanée du rendement et de son hétéroscédasticité
+```{r}
+modFin=garchFit(formula=~arma(0,3)+garch(1,1),data=rcac_train,trace=FALSE,include.mean=FALSE)
+summary(modFin)
+```
+La variance marginale de l'estimation est 
+```{r}
+var.marg.est(modFin)
+```
+Finalement le modèle ARMA/GARCH ajusté au rendement est:
+$$y_t = \epsilon_t + 0.1753\epsilon_{t-1}+ 0.3620\epsilon_{t-2}+0.0230 +\epsilon_{t-3}$$
+$$ \epsilon_t = \sigma_t z_t$$ où z bruit blanc gaussien
+$$\sigma_t^2 = 7.19E-6 + 0.15 \epsilon_t^2 + 0.84 \sigma_{t-1}^2$$
+
+Maintenant répresentons le rendement estimé sur les 100 dernieres observation du jeu de test et un intervalle a 80% basé sur l'estimation de l'écart type conditionnelle
+
+```{r}
+n1 = length(rcac_train)-99 ; n2 = length(rcac_train)
+data_repr = rcac_train[n1:n2]
+mat.est = cbind(data_repr, qnorm(.9)*modFin@sigma.t[n1:n2],-qnorm(.9)*modFin@sigma.t[n1:n2]) 
+data_repr = data.frame(mat.est)
+labels=rcac@dates[1:(length(rcac)-51)]
+plot.ts(data_repr,plot.type = 'single', xlab = "100 derniers observations",ylab = 'Rendement')
+```
+## Prédiction du rendement
+```{r}
+npred=51
+predCac=predict(modFin,n.ahead=npred,plot=FALSE,nx=0)
+dem.garch=qnorm(0.9)*predCac$standardDeviation
+binf.garch= predCac$meanForecast-dem.garch
+bsup.garch=predCac$meanForecast+dem.garch
+```
+```{r}
+mat.p=cbind(bsup.garch,binf.garch,rcac_test)
+matplot(1:npred,mat.p,type='l',col='black',lty=c(1,1,3),lwd=2,xlab="prevision a l'horizon 50",ylab="rendement")
+leg.txt=c("ARMA-GARCH","realisation")
+legend('topright',leg.txt,lty=c(1,3))
+```
+
