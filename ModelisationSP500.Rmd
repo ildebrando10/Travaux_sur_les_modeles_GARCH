@@ -1,0 +1,477 @@
+---
+title: "S&P volatility during global crisis"
+author: "Martin ADECHI"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Problématique**: La crise financière déclenchée par la pandémie de COVID-19 a causé les plus graves effets négatifs sur l'économie réelle et les marchés financiers mondiaux depuis la grande récession de 2008 et la GFC de 2008 (Crise financière mondiale 2008). De nombreuses études ont suggéré que la grande récession de 2008 a été le résultat inévitable de déréglementation des marchés financiers et des produits dérivés, surtout les CDS (credit default swap), la croissance spectaculaire des bulles de logement, et les taux de défaut élevés sur les prêts hypothécaires à risque croissant.La crise financière de 2008 était une crise financière typique causée par l'imperfection du système financier, ce qui implique que les facteurs financiers étaient les principaux facteurs de la GFC de 2008.La crise financière de la coVId était innatendue et différente de la crise mondiale de 2008 sur les principaux moteurs. En fait la crise du COVID ne doit pas être vue uniquement comme une crise sanitaire mais aussi comme une crise économique et financière; ce qui signifie que les graves répercussions de la pandémie de COVID-19 sur la santé et le système social normal se sont encore transformés en une crise financière et économique due à l'offre et la demande (Goldstein, Koijen et Mueller, 2021).Il existe plusieurs similitudes et différences entre la GFC de 2008 et la crise financière liée à la COVID-19. Ces deux crises financières ont entraîné une grande récession sur l'économie mondiale, une incertitude énorme et une volatilité des marchés financiers. Toutefois, ils avaient différentes raisons de formation que la GFC a été causée par éclatement de la bulle immobilière aux États-Unis, alors que la crise de la COVID-19 est née du déclenchement d'une pandémie mondiale qui n'a pas une connexion directe avec un facteur économique.Setiawan et al. (2021) comparait ces deux crises financières dans le domaine des marchés financiers et ont constaté que la crise financière causée par la pandémie de COVID-19 pourrait avoir une incidence relativement plus élevée la volatilité des rendements boursiers par rapport à la GFC de 2008, bien que ces deux crises financières aient toutes deux rencontré très la forte volatilité des marchés boursiers.Face a la nature de la crise, a la nature des événements passés au cours d'une crise, différents modélisations permettrait de rendre compte de façon plus éfficace de la volatilité des actions. Face a une situation de crise, certains types de modèles GARCH peuvent être adaptés que d'autres. Ainsi, afin de bien rechercher et d'analyser les différences entre ces deux crises financières, il est utile d'explorer plusieurs pissibilités de modélisations qui soit toutes pertinentes. **Objectif** Cette étude examinera et évaluera la comparaison entre ces deux crises sur la volatilité du rendement du SP&500 a travers differents modeles de types GARCh dans le but de voir quel modele est plus efficace et efficient pour les différents types de crise financieres.
+
+**Hypothèses**: Un modele GARCH asymétrique comme GJR serait adapté pour estimer et mieux prédire la volatilité La crise de 2008 a plus d'impact que la crise du covid
+
+Le SP&500 est le principale indice boursier qui reflete la santé de l'économie américaine. Il regroupe le top 500 des sociétés américaines cotées en bourse et est l'indice de référence de santé des marchés financiers américains. Nous allons modéliser et prédire sa volatilité pendand la crise financière de 2008 et de COVID-19. Nous allons utiliser divers approches.Nous allons évaluer aussi durant cette étude la performance de divers types de modeles GARCh. Nous allons comparer aussi l'impact de ces deux crises financières sur la volatilité du rendement du S&P 500 selon divers modèles GARCH pour déduire quelle GARCH-type model est plus efficace pour différents crises financières. Nous étudierons la performance dans la prédition selon divers métrics comme AIC/BIC et la fonction de perte QLite
+
+## DAta loading
+
+Nous utilisons les données de S&P 500 index a partir de Yahoo Finance(2024).Le package `quantmod` de R nous permet d'extraire ces données.Par contre, pour permettre la réproductibilité de ce travail, nous allons allons exporter ces données sous forme de fichier `csv` que vous pouvez utiliser ultérieurement. On rappelle en outre que l'utilisation du package `quantmod` demande la connexion internet. Bof!
+
+```{r}
+library(quantmod)
+library(xts)
+```
+
+```{r}
+getSymbols("^GSPC", src = "yahoo",from = as.Date("2002-10-01"))
+data <- data.frame(date = index(GSPC), coredata(GSPC))
+```
+
+```{r}
+head(data)
+```
+
+Les données sont chargés comme nous l'avons espérémais pour eviter de retélécharger a chaque execution les données, nous les enregistrons dans un fichier csv qui sera importer pour l'étude.
+
+```{r}
+data_file = "GSPC_data_from_2002.csv"
+```
+
+```{r}
+write.csv(data, "GSPC_data_from_2002.csv", row.names = FALSE)
+```
+
+## Lecture des données
+
+Le fichier est présent dans le repertoire courant et sera importé
+
+```{r}
+if (file.exists(data_file)){
+  sp = read.csv(data_file)
+}
+```
+
+```{r}
+colnames(sp) = c('date','Open','Hight','Low','Close','volume','Adjusted')
+sp$date = as.Date(sp$date)
+sp = as.xts(sp)
+head(sp)
+```
+
+```{r}
+plot(sp$Close, main='Evolution du SP500 du 2002 au 2024',xlab='Years',ylab='Price')
+```
+
+```{r}
+with(sp["2002-10-01/2010-01-01"], plot(Close,main='Evolution du SP500 de 2002 a 2010',xlab='Years',ylab='Price'))
+```
+
+```{r}
+with(sp["2018-01-01/2024-01-01"], plot(Close,main='Evolution du SP500 de 2018 a 2024',xlab='Years',ylab='Price'))
+```
+
+## Data selection
+
+```{r}
+sp1 = sp["2002-10-01/2010-01-01"]
+index_max = apply(sp1,2,which.max)
+start_gfc = index(sp1)[index_max['Close']]
+sp2 = sp["2018-01-01/2020-02-01"]
+index_max = apply(sp2,2,which.max)
+start_covid = index(sp2)[index_max['Close']]
+```
+
+Déjà on peut constater que la courbe présente deux maximum locaux(bon pas très rigoureusement mathématique). Ces deux points nous indique le moment où la crise commence par impacter l'économie américaine. Plus précisement sur la courbe on trouve que la GFC commence exactement le 2007-10-09 et que la covid crisis commence le 2020-01-17.
+
+Les données ont été bien chargés. Pour pouvoir évaluer l'impact des deux crises nous allons diviser le jeu de données. Le premier subset ira du 1er Octobre 2002 au 1er Aout 2007(Before the 2008 financial crisis) et le deuxieme du 1er Octobre 2002 au 1er Mars 2010. En ce qui concerne l'impact du Covid 19, le premier subset ira du 3 Janvier 2012 au 21 Janvier 2020 et le second subset ira du 3 Janvier 2012 au 31 Décembre 2020. Ainsi l'idée est de considérer une période sans impact de crise et une seconde période incluant l'effet des crises.
+
+Les premièrespériodes sont ainsi les groupes de controle.
+
+```{r}
+sp2007.0 = sp["2002-10-01/2007-08-01"][,'Close']
+sp2007.1 = sp["2002-10-01/2010-03-01"][,'Close']
+sp2020.0 = sp["2012-01-03/2020-01-21"][,'Close']
+sp2020.1 = sp["2012-01-03/2020-12-31"][,'Close']
+
+```
+
+### Descriptive statistics
+
+Nous voulons étudier la volatilité du S&P 500 et nous allons commencer par calculer le rendement. Nous allons nous interesser au rendement composé $$Returns(R_t) = ln(\frac{P_t}{P_{t-1}})$$ où $P_t$ est le daily close price
+
+```{r}
+head(sp2020.1)
+```
+
+```{r}
+library(timeSeries)
+library(prettyR)
+```
+
+```{r}
+rsp2007.0 = returns(sp2007.0, method = 'compound')
+rsp2007.1 = returns(sp2007.1, method = 'compound')
+rsp2020.0 = returns(sp2020.0, method = 'compound')
+rsp2020.1 = returns(sp2020.1, method = 'compound')
+```
+
+Nous allons voir un resumé des données
+
+```{r, echo=FALSE}
+x1 = describe(data.frame(rsp2007.0),num.desc=c("mean","sd","min","max","valid.n"))
+x2 = describe(data.frame(rsp2007.1),num.desc=c("mean","sd","min","max","valid.n"))
+x3 = describe(data.frame(rsp2020.0), num.desc=c("mean","sd","min","max","valid.n"))
+x4 = describe(data.frame(rsp2020.1), num.desc=c("mean","sd","min","max","valid.n"))
+desStats = rbind(x1$Numeric$Close,x2$Numeric$Close,x3$Numeric$Close,x4$Numeric$Close)
+rownames(desStats) = c('2002-2007','2002-2010','2012-2020','2012-2021')
+desStats
+```
+
+Ces statistiques ne m'intéresse pas en vrai. Je vais plutôt m'intéresser au kurtosis et au skewness de ces séries
+
+```{r}
+library(moments)
+library(tseries)
+library(FinTS)
+```
+
+```{r}
+skew.rsp2007.0=round(apply(rsp2007.0,2,skewness,na.rm=TRUE),4)
+kurt.rsp2007.0=round(apply(rsp2007.0,2,kurtosis,na.rm=TRUE),4)
+skew.rsp2007.1=round(apply(rsp2007.1,2,skewness,na.rm=TRUE),4)
+kurt.rsp2007.1=round(apply(rsp2007.1,2,kurtosis,na.rm=TRUE),4)
+skew.rsp2020.0=round(apply(rsp2020.0,2,skewness,na.rm=TRUE),4)
+kurt.rsp2020.0=round(apply(rsp2020.0,2,kurtosis,na.rm=TRUE),4)
+skew.rsp2020.1=round(apply(rsp2020.1,2,skewness,na.rm=TRUE),4)
+kurt.rsp2020.1=round(apply(rsp2020.1,2,kurtosis,na.rm=TRUE),4)
+NormStats=data.frame(Period_2010_2007 = c(skew.rsp2007.0,kurt.rsp2007.0),Period_2010_2010 = c(skew.rsp2007.1,kurt.rsp2007.1), Period_2012_2020 = c(skew.rsp2020.0,kurt.rsp2020.0), Period_2012_2021 = c(skew.rsp2020.1,kurt.rsp2020.1))
+rownames(NormStats)=c("Skewness","Kurtosis")
+print(NormStats)
+```
+
+On voit exactement l'impact de la crise sur l'assymétrie. Le kurtosis calculé ici est centré et montre l'excès d'applatissement pendant toutes les périodes
+
+```{r}
+par(mfrow = c(2,2))
+plot(sp2007.1,xlab = "Day", ylab = "sp&500  price")
+plot(sp2020.1,xlab = "Day", ylab = "sp&500  price")
+plot(rsp2007.1, type = 'l',xlab = "Day", ylab = "sp&500 returns ")
+plot(rsp2020.1, type = 'l',xlab = "Day", ylab = "sp&500 returns ")
+with(sp2020.1['2015-01-01/2020-12-31'], plot(Close))
+```
+
+On voit bien l'impact des crises financières sur les séries de rendements.Au cours de la période 2007-2008, les prix de l'indice S&P 500 ont chuté de 50 %, tandis qu'au cours de la période 2020/01-2020/04 une autre dimunition importante se fait voir. Les changements drastiques du cours du S&P 500 ont entraîné une augmentation de la volatilité des rendements du S&P 500 au cours de ces deux périodes financières. Comme pour le kurtosis, les résultats pour ces 4 sous périodes montre la caractéristique de queue lourde puisque le kurtosis est supérieur a 0.
+
+## ADF test
+
+Selon les graphiques du rendement, nous pouvons bien soupçonner la bancheur des rendements. Mais nous allons le vérifier. En premier lieu, nous allons vérifier la stationnarité de la série via un test de Dickey-Fuller augmenté
+
+```{r}
+x = adf.test(na.omit(rsp2007.0))
+y = adf.test(na.omit(rsp2007.1))
+w = adf.test(na.omit(rsp2020.0))
+z = adf.test(na.omit(rsp2020.1))
+stat = data.frame(pvalue = c(x$p.value,y$p.value,w$p.value,z$p.value))
+rownames(stat) = c('2002-007','2002-2010','2012-2020','2012-2021')
+stat
+
+```
+
+Le tableau montre la stationnarité de la série. \### ARCH LM test Nous allons vérifier l'hétéroscédasticité conditionnelle des séries de rendements
+
+```{r}
+x = ArchTest(rsp2007.0[-1])
+y = ArchTest(rsp2007.1[-1])
+w = ArchTest(rsp2020.0[-1])
+z = ArchTest(rsp2020.1[-1])
+stat = data.frame(pvalue = c(x$p.value,y$p.value,w$p.value,z$p.value))
+rownames(stat) = c('2002-007','2002-2010','2012-2020','2012-2021')
+stat
+```
+
+On rappelle que l'hypothèse nulle du test d'hétéroscédasticité conditionnelle est `H0: Absence d'hétéroscédasticité`. Les valeurs des pvalues confirme l'hétéroscédasticité conditionnelle des rendements
+
+```{r}
+print(x)
+```
+
+### Analyse des modèles de type GARCH
+
+Comme de coutume dans la modélisation de volatilité, l'ordre de retard simpliste (1,1) sera considérée comme suffisant pour couvrir la caractéristique de regroupement de la volatilité. Nous commençons par importer la librarie `fGarch`
+
+```{r}
+library(fGarch)
+library(rugarch)
+```
+
+#### Modele ARCH(1)
+
+$$\sigma_t^2 = \alpha_0 + \alpha_1r_{t-1}^2$$ Où $\sigma_t$ indique la volatilité de l'action
+
+```{r}
+mod1ARCH = garchFit(~garch(1,0),data = rsp2007.0[-1], trace = F, include.mean = FALSE)
+mod2ARCH = garchFit(~garch(1,0),data = rsp2007.1[-1], trace = F, include.mean = FALSE)
+mod3ARCH = garchFit(~garch(1,0),data = rsp2020.0[-1], trace = F, include.mean = FALSE)
+mod4ARCH = garchFit(~garch(1,0),data = rsp2020.1[-1], trace = F, include.mean = FALSE)
+```
+
+#### Modèle GARCH(1,1)
+
+$$\sigma_t^2 = \alpha_0 + \alpha_1r_{t-1}^2 + \beta_1 \sigma_{t-1}^2$$
+
+```{r}
+mod1GARCH = garchFit(~garch(1,1),data = rsp2007.0[-1], trace = F, include.mean = FALSE)
+mod2GARCH = garchFit(~garch(1,1),data = rsp2007.1[-1], trace = F, include.mean = FALSE)
+mod3GARCH = garchFit(~garch(1,1),data = rsp2020.0[-1], trace = F, include.mean = FALSE)
+mod4GARCH = garchFit(~garch(1,1),data = rsp2020.1[-1], trace = F, include.mean = FALSE)
+```
+
+#### Modèle GJR-GARCH
+
+$$\sigma_t^2 = \alpha_0 + (\alpha_1 + \gamma I_{t-1})r_{t-1}^2 + \beta_1 \sigma_{t-1}^2$$ où $$I_{t-1} := 
+\begin{cases} 
+0 & \text{si } r_{t-1} \geq \mu \\
+1 & \text{si} r_{t-1} < \mu
+\end{cases}
+$$
+
+```{r}
+# Spécification du modèle GJR-GARCH(1,1)
+gjr_spec <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(0, 0),include.mean = FALSE),
+  distribution.model = "norm"  
+)
+
+# Estimation du modèle
+mod1GJRGARCH  <- ugarchfit(spec = gjr_spec, data = rsp2007.0[-1])
+mod2GJRGARCH  <- ugarchfit(spec = gjr_spec, data = rsp2007.1[-1])
+mod3GJRGARCH  <- ugarchfit(spec = gjr_spec, data = rsp2020.0[-1])
+mod4GJRGARCH  <- ugarchfit(spec = gjr_spec, data = rsp2020.1[-1])
+```
+
+```{r}
+# Spécification du modèle GJR-GARCH(1,1)
+egarch_spec <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(0, 0), include.mean = FALSE),
+  distribution.model = "norm"  
+)
+
+# Estimation du modèle
+mod1EGARCH  <- ugarchfit(spec = egarch_spec, data = rsp2007.0[-1])
+mod2EGARCH  <- ugarchfit(spec = egarch_spec, data = rsp2007.1[-1])
+mod3EGARCH  <- ugarchfit(spec = egarch_spec, data = rsp2020.0[-1])
+mod4EGARCH  <- ugarchfit(spec = egarch_spec, data = rsp2020.1[-1])
+```
+
+```{r, include=FALSE,echo=FALSE}
+mod1GJRGARCH = garchFit(~garch(1,1),data = rsp2007.0[-1], trace = F,leverage = TRUE, include.mean = FALSE)
+mod2GJRGARCH = garchFit(~garch(1,1),data = rsp2007.1[-1], trace = F, leverage = TRUE,include.mean = FALSE)
+mod3GJRGARCH = garchFit(~garch(1,1),data = rsp2020.0[-1], trace = F,leverage = TRUE, include.mean = FALSE)
+mod4GJRGARCH = garchFit(~garch(1,1),data = rsp2020.1[-1], trace = F,leverage = TRUE, include.mean = FALSE)
+```
+
+```{r,echo=FALSE}
+mod4GJRGARCH@fit$coef
+```
+
+```{r, echo=FALSE}
+library(kableExtra)
+
+data2 <- data.frame(
+  Coefficients = c("$\\alpha_0$", "$\\alpha_1$", "(p-value)", "$\\beta$", "(p-value)", "$\\gamma$", "(p-value)"),
+  ARCH_no_GFC = c("6.14E-5", "0.141", "(0.000)", "", "", "", ""),
+  GARCH_no_GFC = c("1.26E-6", "0.0526", "(0.000)", "0.9268", "(0.000)", "", ""),
+  GJRGARCH_no_GFC = c("1.1E-6", "0.0029", "(0.0798)", "0.9341", "(0.000)", "0.1046", "(0.000)"),
+  ARCH_GFC = c("1.20E-4", "0.43", "(0.000)", "", "", "", ""),
+  GARCH_GFC = c("9.61E-7", "0.0649", "(0.000)", "0.9262", "(0.000)", "", ""),
+  GJRGARCH_GFC = c("9.77E-7", "0.02697", "(0.0008)", "0.9886", "(0.000)", "0.0895", "(0.000)"),
+  ARCH_no_Covid = c("1.93E-6", "0.034", "(0.000)", "", "", "", ""),
+  GARCH_no_Covid = c("4.83E-6", "0.17", "(0.000)", "0.9268", "(0.000)", "", ""),
+  GJRGARCH_no_Covid = c("4.32E-6", "0.0828", "(0.00016)", "0.9378", "(0.000)", "0.1058", "(0.000)"),
+  ARCH_Covid = c("5.33E-5", "0.043", "(0.000)", "", "", "", ""),
+  GARCH_Covid = c("5.1E-6", "0.194", "(0.000)", "0.9886", "(0.000)", "", ""),
+  GJRGARCH_Covid = c("5.24E-6", "0.1844", "(0.000)", "0.9378", "(0.000)", "0.1058", "(0.000)")
+)
+
+kable(data2, format = "html", escape = FALSE, caption = "Tableau 2 : Résultats des modèles GARCH avec et sans crises") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover")) %>%
+  scroll_box(width = "100%", height = "400px")
+```
+
+Le tableau montre les coefficients des modeles GARCH établis ci dessus ainsi que les p-values associés Ce tableau montre que ces coefficients sont significatifs a 5%,10%. Les modèles sont donc cohérents et peuvent être interprêter. Le modèle sera bien pertinents si $\alpha_1 + \beta_1 < 1$. Ce qui est le cas pour ces modèles Le coefficient $\gamma$ du modele GJR-GARCH montre l'effet de levier. Ce coefficient est positif pour tous les modeles et montre que la volatilité est affecté par l'effet levier. Les rendements négatifs influencent beaucoup plus la volatilité de la série que les rendements positifs
+
+### News impact curve
+
+```{r}
+par(mfrow = c(1,2))
+epsilons <- seq(-3, 2, length = 500)
+param1 = mod2GJRGARCH@fit$coef
+param2 = mod4GJRGARCH@fit$coef
+
+sigma_fitted <- function(epsilon, params,sigma_lag = 0.0001){
+  sigma_t <- params['omega'] + (params['alpha1'] +params['gamma1'] * (epsilon < 0)) * epsilon^2 +   params['beta1']*sigma_lag
+  return(sigma_t)
+}
+sigma1 = numeric(500)
+sigma2 = numeric(500)
+sigma1[1] = sigma_fitted(epsilons[1],param1)
+sigma2[1] = sigma_fitted(epsilons[1],param2)
+for (i in 2:500){
+  sigma1[i] = sigma_fitted(epsilons[i],param1,sigma_lag = sigma1[i-1])
+}
+for (i in 2:500){
+  sigma2[i] = sigma_fitted(epsilons[i],param2,sigma_lag = sigma2[i-1])
+}
+```
+
+```{r}
+plot(epsilons[-seq(1,50)],sigma1[-seq(1,50)] ,type = 'l', col= 'blue', lwd = 3, main = 'News Impacts during 2002-2010', xlab = "GJRGARCH")
+plot(epsilons[-seq(1,50)],sigma2[-seq(1,50)],type = 'l',col = 'red', lwd = 3,main = 'News Impacts during 2012-2021',xlab = "GJRGARCH")
+```
+
+Ces deux graphiques confirment le fait que l'effet de levier est grandement significative dans la série.Plus les rendements sont négatifs, plus la volatilité est grande.Ce qui signifie que la volatilité réagit de façon intensive aux chocs.
+
+La figure confirme la sortie du logiciel et de l'estimation des paramètres. La valeur positive de $\gamma$ montre que la volatilité est négativement correlée au rendement pendant les périodes incluant la crise.
+
+Comparé les deux périodes, les courbes montrent que l'influence des effets négatifs sont approximativement le même.
+
+### Difference and Percentage of Coefficient
+
+$$ Difference = S_{2002-20010}-S_{2002-2007}$$ où S désigne la série financière $$Percentage = \frac{S_{2002-20010}-S_{2002-2007}}{S_{2002-2007}}$$
+
+```{r}
+ percentage = (mod4GJRGARCH@fit$coef-mod3GJRGARCH@fit$coef)*100/(mod3GJRGARCH@fit$coef)
+ difference = mod4GJRGARCH@fit$coef-mod3GJRGARCH@fit$coef
+ print(difference)
+ print(percentage)
+```
+
+```{r, echo=FALSE}
+library(kableExtra)
+
+data3 <- data.frame(
+  Model = c("ARCH", "GARCH", "EGARCH", "GJR-GARCH"),
+  Alpha0_Diff_1 = c("5.91E-05", "-3.04E-07", "0.083", "-1.29E-07"),
+  Alpha1_Diff_1 = c("0.291", "0.0123", "-0.013", "-3.485E-05"),
+  Beta_Diff_1 = c("", "-5.226E-04", "0.008", "3.64E-03"),
+  Gamma_Diff_1 = c("", "", "-0.006", "1.16E-03"),
+  Alpha0_Per_1 = c("96.16%", "-24.043%", "-44.95%", "-11.88%"),
+  Alpha1_Per_1 = c("205.91%", "23.395%", "13.936%", "-99.81%"),
+  Beta_Per_1 = c("", "-0.05%", "0.835%", "0.389%"),
+  Gamma_Per_1 = c("", "", "-6.188%", "1.114%"),
+  
+  Alpha0_Diff_2 = c("6.023E-06", "-2.702E-07", "0.0905", "3.616E-07"),
+  Alpha1_Diff_2 = c("0.231", "0.0226", "0.061", "0.0641"),
+  Beta_Diff_2 = c("", "-9.038E-04", "0.007", "-0.0377"),
+  Gamma_Diff_2 = c("", "", "0.139", "-0.0141"),
+  Alpha0_Per_2 = c("12.59%", "-5.59%", "-12.03%", "8.41%"),
+  Alpha1_Per_2 = c("87.005%", "13.22%", "24.286%", "1.185E+07"),
+  Beta_Per_2 = c("", "-0.119%", "0.773%", "-4.819%"),
+  Gamma_Per_2 = c("", "", "93.563%", "-4.287%")
+)
+
+kable(data3, format = "html", escape = FALSE, caption = "Tableau 3 : Comparaison des différences et pourcentages") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover")) %>%
+  add_header_above(c(" " = 1, "Différence (2002-2007 vs 2002-2010)" = 4, "Pourcentage" = 4,
+                     "Différence (2012-2020.01 vs 2012-2020.12)" = 4, "Pourcentage" = 4)) %>%
+  column_spec(1, bold = TRUE) %>%
+  scroll_box(width = "100%", height = "400px")
+```
+
+Les différences calculés , ainsi que leurs pourcentages, permettent de comprendre les impacts des crises financières sur l'estimation de la volatilité en analysant les variations de chaque coefficient. - Première période globale : 2002-2010 (impactée par la crise financière de 2007-2008) -- Le coefficient beta ($\beta$) représente la corrélation entre $\sigma_t^2$ et $\sigma_{t-1}^2$ Selon le tableau , dans le modèle GJRGARCH, le coefficient augmente de 0.45%, ce qui prouve une persistance de la variance de 0.45% -- Le coefficient alpha1 $\alpha_1$ décrit le taux de variation de la variance conditionnelle. Le tableau montre une augmentation de 205% et de 23% pour les ARCH et GARCH et une dimunition de 7.45% pour le modele GJR GARCh -- Le coefficient $\gamma$ mesure l'effet levier. Le modele GJRGARCH montre une augmantation; ce qui signifie que la crise GFC a augmenté l'effet levier
+
+#### Interpreter aussi la deuxieme période
+
+La crise du CoViD n'est pas directement liés au marché financieres. Ceci est montré par le coefficient $\beta$ pour les modeles GARCH symétriques et GJRGARCH. Comparé a la période du 2002-2010, dans cette période, la persistence de la volatilité tend a s'affaibli pour ces trois modeles surtout pour le GJR ce qui signifie que la crise financière de la COVID-19 a moins d'impacts sur les changements persistants de la volatilité.
+
+**Conclusion** Le modele EGARCH a bien montré l'effet levier pendant ces deux périodes contrairement a un GJR garch qui a echoué. Le modele EGarch est plus adapté en performance de réveler les détails subtils de levier sur les séries financières
+
+**Conclusion** Globalement, sur la base de la comparaison des coefficients et les différences sur eux, on peut conclure que bien que la crise financière causée par la pandémie de COVID-19 peut entraîner une augmentation considérable de la volatilité sur une courte période temps, sa durée de cette augmentation de la volatilité n'est pas aussi persistant en tant que durée pour la période financière 2007-2008 crise.
+
+## Comparaison de la performance de differents modeles de type garch sur l'estimation de la volatilité
+
+```{r}
+mod3GARCH@fit$ics
+```
+
+```{r}
+infocriteria(mod4GJRGARCH)
+```
+
+```{r, echo=FALSE}
+data4 <- data.frame(
+  Period = c(rep("2002--2007", 4), rep("2002--2010", 4)),
+  Model = c("ARCH", "GARCH", "EGARCH", "GJR-GARCH", "ARCH", "GARCH", "EGARCH", "GJR-GARCH"),
+  No_Obs = rep(c(1216, 1216, 1216, 1216, 1865, 1865, 1865, 1865), 1),
+  DF = rep(c(2, 3, 4, 4, 2, 3, 4, 4), 1),
+  AIC = c(-6.727128, -6.879365, -6.897820, -6.902240, -5.876758, -6.371671, -6.400658, -6.404088),
+  BIC = c(-6.718735, -6.866775, -6.881033, -6.885453, -5.870826, -6.362774, -6.388795, -6.392225)
+)
+
+kable(data4, format = "html", escape = FALSE, caption = "AIC/BIC des modèles de type GARCH utilisés pour la période globale de 2002-2010") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover")) %>%
+  add_header_above(c("Période" = 1, "Modèle" = 1, "Statistiques" = 2, "AIC/BIC" = 2)) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2, width = "10em") %>%
+  column_spec(3:6, width = "8em") %>%
+  scroll_box(width = "100%", height = "400px")
+```
+
+```{r, echo=FALSE}
+data5 <- data.frame(
+  Period = c(rep("2012--2020.01", 4), rep("2012--2020.12", 4)),
+  Model = c("ARCH", "GARCH", "EGARCH", "GJR-GARCH", "ARCH", "GARCH", "EGARCH", "GJR-GARCH"),
+  No_Obs = rep(c(1216, 1216, 1216, 1216, 1865, 1865, 1865, 1865), 1),
+  DF = rep(c(2, 3, 4, 4, 2, 3, 4, 4), 1),
+  AIC = c(-6.879052, -6.996177, -7.088837, -7.060270, -6.603429, -6.834701, -6.883044, -6.875914),
+  BIC = c(-6.873506, -6.987857, -7.077744, -7.049177, -6.598371, -6.827115, -6.872929, -6.865799)
+)
+
+kable(data5, format = "html", escape = FALSE, caption = "AIC/BIC des modèles de type GARCH utilisés pour la période globale de 2012-2020.12") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover")) %>%
+  add_header_above(c("Période" = 1, "Modèle" = 1, "Statistiques" = 2, "AIC/BIC" = 2)) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2, width = "10em") %>%
+  column_spec(3:6, width = "8em") %>%
+  scroll_box(width = "100%", height = "400px")
+```
+
+**Conclusion 1**: Le modele GJRGARCH présente un AIC et BIC meilleur et est meilleure pendant la crise du GFC alors que c'est le modèle EGARCH qui est performant pendant Covid **Conclusion 2**: Pour ces deux crises financières, les GARCH asymétriques les modèles ont de meilleures performances que les modèles ARCH/GARCH symétriques, ce qui prouve l'influence de l'effet de levier sur la volatilité des rendements du S&P 500 et souligne l'importance de prendre en considération les effet de levier dans l'estimation de la volatilité.
+
+La fonction de perte utilisée pour évaluer la performance est le QLIKE(quasi likelihood). L'intuition derrière la fonction de perte QLIKE se réfère à trouver le modèle minimisant la différence entre les prévisions et données réelles et le modèle donnant le plus petit maximum est considéré comme minimisant.
+
+## Comparaison de capacité préditive de la volatilité parmi ces différents modeles de type garch
+
+Nous allons faire du train test splitting.Pour la période globale de 2002-2010, le jeu de train est la période allant du 1er Oct 2002 au 1er Aout 2007, et le jeu de test est la période allant du 02 Aout 2007 au 1er Mars 2010. Concernant la période du 2012-2020, le jeu de train est du 03 Janv 2012 au 21 janvier 2020 et le jeu de test va du 22 Janv 2020 au 31 decembre 2020
+
+```{r}
+sptrain1 = sp["2002-10-01/2007-08-01"][,'Close']
+sptest1 = sp["2007-08-02/2010-03-01"][,'Close']
+sptrain2 = sp["2012-01-03/2020-01-21"][,'Close']
+sptest2 = sp["2020-01-22/2020-12-31"][,'Close']
+```
+
+```{r, echo=FALSE}
+# Creating the data for the table
+data6 <- data.frame(
+  Model = c("ARCH", "GARCH", "EGARCH", "GJR-GARCH"),
+  RMSE = c("2.261897%", "2.212125%", "2.271604%", "2.272738%"),
+  MAE = c("1.662198%", "1.605520%", "1.665549%", "1.667084%"),
+  MASE = c("4.038137%", "3.538912%", "3.554080%", "3.568674%")
+)
+
+# Using kable to render the table
+kable(data6, format = "html", escape = FALSE, caption = "Performances des modèles pendant la période 2002-2010") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover")) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2:4, width = "8em") %>%
+  scroll_box(width = "100%", height = "300px")
+```
+
+Le tableau montre les résultats des critères d'évaluations de la performance prédictive de chaque modèle pour la période de crise de 2008(2002-2008). - Le modèle GARCH présente la meilleure qualité de prédiction avec des erreurs plus faibles comparé aux autres modèles: RMSE de $2.21\%$, MAE de $1.60\%$ et un MASE de $3.53\%$
